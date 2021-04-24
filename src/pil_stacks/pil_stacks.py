@@ -1,7 +1,6 @@
 from typing import List, Dict, Union, Tuple
 from PIL import Image, ImageDraw, ImageFont, ImageSequence, ImageEnhance
-from io import BytesIO
-from Layers import Media, Text, Img
+from Layers import Layer, Text, Img, Color
 
 from Template import Template
 
@@ -22,9 +21,9 @@ class Stack(Template):
         self.name = name.replace(" ", "_")
         self.filters = filters
         if isinstance(base, str):
-            self.image = Media.open_image(base)
+            self.image = Layer.open_image(base)
         elif isinstance(base, tuple):
-            self.image = Media.create_blank(width=base[0], height=base[1])
+            self.image = Color.create_blank(width=base[0], height=base[1])
         else:
             self.image = base
 
@@ -66,7 +65,7 @@ class Stack(Template):
             else:
                 layer.draw(base=result)
 
-        result = Media.apply_filters(image=result, filters=self.filters)
+        result = Layer.apply_filters(image=result, filters=self.filters)
         return result
 
     def save(self, fp: str, **kwargs) -> str:

@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageSequence, ImageEnhance
 from copy import copy
 
 
-class Media:
+class Layer:
     def __init__(
         self,
         name: str,
@@ -20,7 +20,7 @@ class Media:
             "color": 1.0,
             "brightness": 1.0,
         },
-        _type: str = "media",
+        _type: str = "layer",
         constant: Union[str, Image.Image] = None,
     ) -> None:
         self.name = name.replace(" ", "_")
@@ -33,7 +33,7 @@ class Media:
         self.type = _type
 
         if isinstance(constant, str) and _type == "image":
-            constant = Media.open_image(constant)
+            constant = Layer.open_image(constant)
 
         self.constant = constant
 
@@ -75,13 +75,9 @@ class Media:
             "brightness": 1.0,
         },
     ) -> Image.Image:
-        M = Media(name="", filters=filters)
+        M = Layer(name="", filters=filters)
 
         return M.__apply_filters__(image)
-
-    @staticmethod
-    def create_blank(width: int = 0, height: int = 0) -> Image.Image:
-        return Image.new("RGBA", (width, height), (0, 0, 0, 0))
 
     def __apply_filters__(self, image: Image.Image) -> Image.Image:
         if self.type != "text" and max([self.filters[f] != 1.0 for f in self.filters]):
@@ -121,7 +117,7 @@ class Media:
             "brightness": 1.0,
         },
     ) -> None:
-        M = Media(
+        M = Layer(
             name="",
             x=x,
             y=y,
@@ -136,8 +132,8 @@ class Media:
     def __paste_image__(self, base: Image.Image, image: Image.Image) -> None:
         image = self.__apply_filters__(image)
 
-        w = self.width if self.width != None else image.size[0]
-        h = self.height if self.height != None else image.size[1]
+        w = self.width if self.width is not None else image.size[0]
+        h = self.height if self.height is not None else image.size[1]
 
         image = image.resize((w, h))
 
@@ -154,7 +150,7 @@ class Media:
             if self.type == "text":
                 content = self.create_text(content)
             else:
-                content = Media.open_image(content)
+                content = Layer.open_image(content)
 
         content = self.__apply_filters__(content)
 
@@ -166,9 +162,9 @@ class Media:
         content: Union[str, Image.Image] = None,
     ) -> Image.Image:
         if isinstance(base, str):
-            image = Media.open_image(base)
+            image = Layer.open_image(base)
         elif isinstance(base, tuple):
-            image = Media.create_blank(width=base[0], height=base[1])
+            image = Color.create_blank(width=base[0], height=base[1])
         else:
             image = base
 
@@ -185,13 +181,13 @@ class Media:
                 "name": _dict["font"].path,
                 "size": _dict["font"].size,
             }
-        if _dict["constant"] != None:
+        if _dict["constant"] is not None:
             _dict["constant"] = f"{_dict['name']}_CONSTANT.png"
 
         return _dict
 
 
-class Text(Media):
+class Text(Layer):
     def __init__(
         self,
         name: str,
@@ -248,7 +244,7 @@ class Text(Media):
         self.__paste_image__(base=base, image=self.create_text(content))
 
 
-class Img(Media):
+class Img(Layer):
     def __init__(
         self,
         name: str,
@@ -270,11 +266,59 @@ class Img(Media):
         )
 
     def draw(self, base: Image.Image, content: Union[str, Image.Image] = None) -> None:
-        if content != None:
+        if content is not None:
             if isinstance(content, str):
-                content = Media.open_image(content)
+                content = Layer.open_image(content)
         else:
             content = self.constant.copy()
 
         self.__paste_image__(base, content)
+
+
+class Color(Layer):
+    def __init__(
+        self,
+        name: str,
+        x: int = 0,
+        y: int = 0,
+        width: int = None,
+        height: int = None,
+        rotation: int = 0,
+        constant: Tuple[int, int, int, int] = None,
+    ) -> None:
+        super().__init__(
+            name, x, y, width, height, rotation, _type="color", constant=constant,
+        )
+
+    @staticmethod
+    def fixcolor(color: Tuple) -> Tuple[int, int, int, int]:
+        l = len(color)
+        while l < 4:
+            color += (0,) if l != 3 else (255,)
+            l += 1
+        return color
+
+    @staticmethod
+    def create_color(
+        width: int = 0,
+        height: int = 0,
+        color: Tuple[int, int, int, int] = (255, 255, 255, 255),
+    ) -> Image.Image:
+        return Image.new("RGBA", (width, height), Color.fixcolor(color))
+
+    @staticmethod
+    def create_blank(width: int = 0, height: int = 0) -> Image.Image:
+        return Image.new("RGBA", (width, height), (0, 0, 0, 0))
+
+    def draw(
+        self, base: Image.Image, content: Tuple[int, int, int, int] = None
+    ) -> None:
+        if content is None:
+            content = self.constant
+        self.__paste_image__(
+            base=base,
+            image=Color.create_color(
+                width=self.width, height=self.height, color=content
+            ),
+        )
 

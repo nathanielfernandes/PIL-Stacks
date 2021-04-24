@@ -1,13 +1,11 @@
 import json, os, shutil
-from typing import List, Dict, Union, Tuple
 from PIL import Image, ImageDraw, ImageFont, ImageSequence, ImageEnhance
-from Layers import Media, Text, Img
+from Layers import Layer, Text, Img
 from zipfile import ZipFile
-from io import BytesIO
 
 
 class Template:
-    def import_template(self, template: Union[str]) -> None:
+    def import_template(self, template: str) -> None:
         name = os.path.basename(template)
         path = template.replace(name, "")
 
@@ -20,13 +18,16 @@ class Template:
             except FileExistsError:
                 pass
 
-            with ZipFile(template, "r") as zipObj:
-                files = zipObj.namelist()
-                zipObj.extractall(path)
-                for fileName in files:
-                    if fileName.endswith(".json"):
-                        template = path + fileName
-                        break
+            try:
+                with ZipFile(template, "r") as zipObj:
+                    files = zipObj.namelist()
+                    zipObj.extractall(path)
+                    for fileName in files:
+                        if fileName.endswith(".json"):
+                            template = path + fileName
+                            break
+            except FileNotFoundError:
+                shutil.rmtree(path)
 
         with open(template) as json_file:
             data = json.load(json_file)
@@ -34,8 +35,8 @@ class Template:
         self.filters = data["POSTFILTERS"]
 
         baseimage = data.get("BASEIMAGE")
-        if baseimage != None:
-            self.image = Media.open_image(path + baseimage)
+        if baseimage is not None:
+            self.image = Layer.open_image(path + baseimage)
 
         for layer_name in data["LAYERORDER"]:
             layer = data["LAYERS"][layer_name]
@@ -47,7 +48,7 @@ class Template:
                 layer["color"] = tuple(layer["color"])
                 self.add_layer(Text(**layer))
             else:
-                if layer["constant"] != None:
+                if layer["constant"] is not None:
                     layer["constant"] = path + layer["constant"]
 
                 self.add_layer(Img(**layer))
@@ -58,9 +59,9 @@ class Template:
         files = []
         _dicts = {}
         for layer in self.layers:
-            layerData = layer.asdict()
+            layerData = layer.__asdict__()
 
-            if layer.constant != None:
+            if layer.constant is not None:
                 baked = layer.__getbakedlayer__(base=self.image.size)
 
                 savename = f"{layer.name}_CONSTANT.png"
@@ -68,7 +69,7 @@ class Template:
                 files.append(savename)
 
                 const = layerData["constant"]
-                layerData = Media(name=layer.name, _type="image").asdict()
+                layerData = Layer(name=layer.name, _type="image").__asdict__()
                 layerData["constant"] = const
 
             _dicts[layer.name] = layerData
