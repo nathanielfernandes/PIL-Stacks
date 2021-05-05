@@ -3,9 +3,11 @@ import pygame
 from pygame.mouse import get_pos
 from pygame.transform import scale
 import os
+from pil_stacks import Stack
+from Layers import Text, Img
+from PIL import ImageFont
 
-
-RESIZE_CIRCLE_RADIUS = 10
+RESIZE_CIRCLE_RADIUS = 6
 WINDOW_SIZE = (1600, 900)
 ####################################################
 # helper methods and classes
@@ -14,13 +16,14 @@ pygame.init()
 
 #Directory constants
 ASSETS_DIRECTORY = "Assets" #currently uses relative directory, change if neccessary
+FONT_DIRECTORY = os.path.join(ASSETS_DIRECTORY,'base_font.ttf')
 EDITOR_ICON_PATH = os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","AddObjectButton","add_1.png")
 EDITOR_ICON = pygame.image.load(EDITOR_ICON_PATH)
 
 #preloading fonts with varying sizes
-font = pygame.font.Font(os.path.join(ASSETS_DIRECTORY,'base_font.ttf'), 16)
-font_L = pygame.font.Font(os.path.join(ASSETS_DIRECTORY,'base_font.ttf'), 20)
-font_XL = pygame.font.Font(os.path.join(ASSETS_DIRECTORY,'base_font.ttf'), 30)
+font = pygame.font.Font(FONT_DIRECTORY, 16)
+font_L = pygame.font.Font(FONT_DIRECTORY, 20)
+font_XL = pygame.font.Font(FONT_DIRECTORY, 30)
 
 from tkinter import * 
 from tkinter import simpledialog
@@ -32,7 +35,44 @@ def AskForValue(title, question):
     return simpledialog.askstring(title, question,
                                 parent=root)
 
+def AskForNewLayer():
+    return NewLayerPopup(root).GetValues()
+
+class NewLayerPopup(simpledialog.Dialog):
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent, title="New Layer")
+
+    def body(self, master):
+        self.master = master
+
+        Label(self.master, text="Type: ").grid(row=0, column=0)
+        self.type = StringVar(name="type")
+        self.type.set("Image")
+        OptionMenu(master, self.type, "Image", "Text").grid(row=1,column=0)
+        self.name = StringVar(name="name")
+        self.name.set("")
+        Label(self.master, text="   Input Layer Name: (no underscores '_')         ").grid(row=2,column=0)
+        Entry(master, textvariable=self.name).grid(row=3,column=0)
+        return self  
+
+    def apply(self):
+        self.type = self.type.get()
+        self.name = self.name.get()
+
+    def GetValues(self):
+        class values:
+            def __init__(self,type,name) -> None:
+                self.type = type
+                self.name = name
+            def __repr__(self) -> str:
+                return ("type: " + self.type + " - name: " + self.name)
+        return values(self.type, self.name)
+
 class FilterPopup(simpledialog.Dialog):
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent, title="Filters")
 
     def body(self, master):
         self.master = master
@@ -183,7 +223,10 @@ class Mouse():
         self.dragging_y = 0
         self.offset_x = 0
         self.offset_y = 0
+        self.last_click_x = 0
+        self.last_click_y = 0
 
+        self.rotating = False
         self.resizing = False
 
     def Update(self, Editor) -> None:
@@ -200,6 +243,10 @@ class Mouse():
                 ms_coords = self.get_pos()
                 new_size = camera.CameraToWorldSize((ms_coords[0] - hd_coords[0]), (ms_coords[1] - hd_coords[1]))
                 obj.SetSize(*new_size)
+            elif self.rotating:
+                val = (self.x - self.last_click_x)
+                val = min( 359, val) if val > 0 else max(-359, val)
+                self.holding.object.rotation = val
             else:
                 obj = self.holding.object
                 obj.SetPosition(*camera.CameraToWorldCoordinates(self.x - self.offset_x, self.y - self.offset_y))
@@ -225,7 +272,11 @@ class Mouse():
         self.dragging_y = self.y + camera.y  
 
     def Reset(self) -> None:
+        if self.holding != None:
+            self.holding.object.show_rotation_degrees = False
+            self.holding.object.update_rect()
         self.holding = None
+        self.rotating = False
         self.resizing = False
         self.dragging = False
 
@@ -259,13 +310,19 @@ mouse = Mouse()
 
 class Object():
     _id_count_ = 0
-    def __init__(self, x=0, y=0, img=None, width=None, height=None, show_rect=True, collidable=True, resizable=True, keep_aspect_ratio=True) -> None:
+    TYPE_NONE = -1
+    TYPE_IMAGE = 0
+    TYPE_TEXT = 1
+    def __init__(self, x=0, y=0, img=None, width=None, height=None, show_rect=True, collidable=True, resizable=True, keep_aspect_ratio=True, type=-1) -> None:
         self.x : float = x
         self.y : float = y
+        self.rotation = 0
+        self.type = type
         self.width : int = width
         self.height : int = height
         self.__image__ = None
         self.show_rect : bool = show_rect
+        self.show_rotation_degrees : bool = False
         self.collidable : bool = collidable
         self.hidden = False
         self.resizable : bool = resizable
@@ -318,6 +375,11 @@ class Object():
             if self.GetResizeCircle().collidepoint(*mouse.get_pos()):
                 mouse.resizing = True
                 return True
+            if self.GetRotationCircle().collidepoint(*mouse.get_pos()):
+                mouse.rotating = True
+                self.show_rotation_degrees = True
+                return True
+        self.show_rotation_degrees = False
         if self.rect.collidepoint(*mouse.get_pos()):
             mouse.resizing = False
             return True
@@ -334,6 +396,11 @@ class Object():
         if self.show_rect and camera.Show_rects: 
             pygame.draw.rect(screen, self.rect_color, self.rect, width=3)
             pygame.draw.circle(screen, Color.RED, self.BottomRight(), camera.zoom * RESIZE_CIRCLE_RADIUS, width=0)
+            pygame.draw.circle(screen, Color.BLUE, self.TopMid(), camera.zoom * RESIZE_CIRCLE_RADIUS, width=0)
+            if self.show_rotation_degrees:
+                Text = font_XL.render(str(self.rotation), 1, Color.BLUE)
+                txt_coords = self.TopMid()
+                screen.blit(Text, (txt_coords[0] - 8, txt_coords[1] - 35))
             
         if self.show_rect and camera.Show_names:
             if len(str(self.id)) > 16:
@@ -361,9 +428,17 @@ class Object():
         coords = self.BottomRight()
         return pygame.Rect(coords[0] - camera.zoom * RESIZE_CIRCLE_RADIUS, coords[1] - camera.zoom * RESIZE_CIRCLE_RADIUS, camera.zoom * RESIZE_CIRCLE_RADIUS * 2, camera.zoom * RESIZE_CIRCLE_RADIUS * 2)
 
+    def GetRotationCircle(self):
+        coords = self.TopMid()
+        return pygame.Rect(coords[0] - camera.zoom * RESIZE_CIRCLE_RADIUS, coords[1] - camera.zoom * RESIZE_CIRCLE_RADIUS, camera.zoom * RESIZE_CIRCLE_RADIUS * 2, camera.zoom * RESIZE_CIRCLE_RADIUS * 2)
+
     def BottomRight(self) -> tuple:
         size = (self.width, self.height)
         return camera.WorldToCameraCoordinates(self.x + size[0], self.y + size[1])
+
+    def TopMid(self) -> tuple:
+        size = (self.width, self.height)
+        return camera.WorldToCameraCoordinates(self.x + (size[0]/2), self.y)
 
     def GetScreenSize(self) -> tuple:
         return camera.WorldToCameraSize(self.width, self.height)
@@ -461,13 +536,16 @@ class AddObjectButton(Button):
         self.update_rect()
 
     def Colliding(self, editor) -> None:
-        name = AskForValue("Layer Name", "Input Layer Name: (no underscores '_')         ")
+        values = AskForNewLayer()
+        name = values.name
+        type = values.type
         if name == None or len(name.rstrip()) == 0 or not editor.layers.IsUnique(name):
             self.SetState(Button.State.DEFAULT)
             self.update_rect()
             return
         obj = Object(650,350,width=200,height=200)
         obj.id = name
+        obj.type = {"None" : Object.TYPE_NONE, "Image": Object.TYPE_IMAGE, "Text": Object.TYPE_TEXT}[type]
         editor.layers.append(obj)
         self.SetState(Button.State.DEFAULT)
         self.update_rect()
@@ -715,7 +793,8 @@ class Layer(Button):
 
 class Editor():
     """An editor object which has a Launch() method to launch the editor window.\n Once Launch() is called a pygame instance will run and lock the rest of the code until the window is closed and a\n Additional options can be enabled by setting the properties to true before calling the Launch() method, such as [show_fps] and [__debug_info__]."""
-    def __init__(self, Background : str = None) -> None:
+    def __init__(self,name : str, Background : str) -> None:
+        self.name = name
         self.screen = pygame.display.set_mode(WINDOW_SIZE)
         pygame.display.set_icon(EDITOR_ICON)
         pygame.display.set_caption('Template Editor')
@@ -726,9 +805,10 @@ class Editor():
         self.clock = pygame.time.Clock()
     
         bg_size =  (WINDOW_SIZE[0] - 100, WINDOW_SIZE[1] - 100)
+        self.__original_background__ = pygame.image.load(Background)
         self.background =    Object(x=220,
                                     y=50,
-                                    img=aspect_scale(pygame.image.load(Background), *bg_size),
+                                    img=aspect_scale(self.__original_background__, *bg_size),
                                     show_rect=False)
 
         self.layers = LayerContainer(x=1255,y=2,width=413*0.83,height=1080*0.83, keep_aspect_ratio=False, img=os.path.join(ASSETS_DIRECTORY,"Layout", "ui_right.png")) # Object(x=20,y=20,width=200,height=200,img="cat.jpg")
@@ -835,7 +915,7 @@ class Editor():
             layer.object.update_rect()
 
 
-    def Launch(self):
+    def Launch(self) -> Stack:
         while not self.done:
             mouse.Update(self)
 
@@ -843,11 +923,14 @@ class Editor():
                 if event.type == pygame.QUIT:
                     self.done = True
                 elif event.type == pygame.MOUSEBUTTONDOWN:
+                    mouse.last_click_x, mouse.last_click_y = mouse.x, mouse.y
                     #1 - left click, 2 - middle click, 3 - right click, 4 - scroll up , 5 - scroll down
                     if event.button == 1:
                         self.CollisonCheck()
-                    if event.button == 3:
+                    elif event.button == 3:
                         mouse.Drag()
+                    else:
+                        mouse.Reset()
                 elif event.type == pygame.MOUSEBUTTONUP:
                     mouse.Reset()
                 elif event.type == pygame.KEYDOWN:
@@ -870,4 +953,38 @@ class Editor():
             pygame.display.flip()
         pygame.display.quit() #used instead of pygame.quit() as another pygame instance may need to be launched
         root.quit() 
+        return self.ToStack()
 
+    def ToStack(self) -> Stack:
+        from PIL import Image
+
+        font = ImageFont.truetype(FONT_DIRECTORY, 16)
+        font_L = ImageFont.truetype(FONT_DIRECTORY, 20)
+        font_XL = ImageFont.truetype(FONT_DIRECTORY, 30)
+
+        base_image = Image.frombytes('RGBA', self.__original_background__.get_size(), pygame.image.tostring(self.__original_background__, "RGBA"), 'raw')
+        scene = Stack(name=self.name, base=base_image, constant_base=True)
+        original_bg = self.__original_background__
+        aspect_scaled_bg = self.background.image
+        scale_factor = (original_bg.get_size()[0]/aspect_scaled_bg.get_size()[0] , 
+                        original_bg.get_size()[1]/aspect_scaled_bg.get_size()[1] )
+
+        layer : Layer
+        for layer in self.layers.layers:
+            obj = layer.object
+            obj_coords = obj.GetScreenCoordinates()
+            coords = (int((obj_coords[0] - self.background.x) * scale_factor[0]),
+                      int((obj_coords[1] - self.background.y) * scale_factor[1])
+                )
+
+            obj_size = obj.GetScreenSize()
+            size = (int(obj_size[0] * scale_factor[0]),
+                    int(obj_size[1] * scale_factor[1])
+                    )
+
+            if   obj.type == Object.TYPE_IMAGE: scene.add_layer(Img(obj.id, *coords, *size,rotation=obj.rotation))
+            elif obj.type == Object.TYPE_TEXT: scene.add_layer(Text(name=obj.id, font=font, color=(0,0,0),
+                                                                    x=coords[0],y=coords[1],width=size[0],
+                                                                    height=size[1],rotation=obj.rotation
+                                                                                        ))
+        return scene
