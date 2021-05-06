@@ -5,4 +5,4 @@ a.show_fps = True
 a.__debug_info__ = True
 
 stack = a.Launch()
-stack.export_template()
+#stack.export_template() uncomment to test exporting

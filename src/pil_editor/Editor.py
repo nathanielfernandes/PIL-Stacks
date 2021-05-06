@@ -5,6 +5,7 @@ from pygame.transform import scale
 import os
 from pil_stacks import Stack
 from Layers import Text, Img
+from Layers import Color as ColorLayer
 from PIL import ImageFont, Image
 
 RESIZE_CIRCLE_RADIUS = 6
@@ -25,7 +26,9 @@ font = pygame.font.Font(FONT_DIRECTORY, 16)
 font_L = pygame.font.Font(FONT_DIRECTORY, 20)
 font_XL = pygame.font.Font(FONT_DIRECTORY, 30)
 
-from tkinter import simpledialog, Tk, Label, Entry, Scale, StringVar, OptionMenu
+from tkinter import BooleanVar, Checkbutton, simpledialog, Tk, Label, Entry, Scale, StringVar, OptionMenu, colorchooser
+from tkinter.filedialog import askopenfilename
+from tkinter.messagebox import showinfo, showerror
 
 root=Tk() 
 root.withdraw()
@@ -44,26 +47,49 @@ class NewLayerPopup(simpledialog.Dialog):
         super().__init__(parent, title="New Layer")
 
     def body(self, master):
-        self.master = master
+        self._master = master
 
-        Label(self.master, text="Type: ").grid(row=0, column=0)
+
+        self.preview = None
+        Label(self._master, text="Type: ").grid(row=0, column=0)
         self.type = StringVar(name="type")
         self.type.set("Image")
-        OptionMenu(master, self.type, "Image", "Text").grid(row=1,column=0)
+        OptionMenu(master, self.type, "Image", "Text", "Color").grid(row=1,column=0) #, "Color") <- add later
         self.name = StringVar(name="name")
         self.name.set("")
-        Label(self.master, text="   Input Layer Name: (no underscores '_')         ").grid(row=2,column=0)
-        Entry(master, textvariable=self.name).grid(row=3,column=0)
-        return self  
+
+        Label(self._master, text="   Input Layer Name: (no underscores '_')         ").grid(row=2,column=0)
+        Entry(master, textvariable=self.name).grid(row=3,column=0,pady=5)
+
+        Label(master=master, text="constant: ").grid(row=4,column=0,padx=4)
+        tkinter.Button(master=master, text="Set Preview", command=self.SetPreview).place(x=20,y=100)
         
+        self.is_constant = BooleanVar(name="is_constant")
+        Checkbutton(master=master, variable=self.is_constant).place(x=150,y=100)
+        
+        return self
+        
+    def SetPreview(self) -> None:
+        type = self.type.get()
+        if type == "Image":
+            file_dir : str = askopenfilename()
+            if file_dir != None and file_dir.rstrip() != "" and ( file_dir.endswith(".png") or file_dir.endswith(".jpg") ):
+                self.preview = pygame.image.load(file_dir)
+        elif type == "Text":
+            self.preview = AskForValue("Text preview", "Enter Text: ")
+        elif type == "Color":
+            self.preview = colorchooser.askcolor(title="Select Color")[0]
+
     def GetValues(self):
         class values:
-            def __init__(self,type,name) -> None:
+            def __init__(self,type,name, preview_value, is_constant) -> None:
                 self.type = (type)
                 self.name = (name)
+                self.preview = preview_value
+                self.is_constant = is_constant
             def __repr__(self) -> str:
-                return ("type: " + self.type.get() + " - name: " + self.name.get())
-        return values(self.type.get(), self.name.get())
+                return ("type: " + self.type.get() + " - name: " + self.name.get() + " - preview: " + self.preview)
+        return values(self.type.get(), self.name.get(), self.preview, self.is_constant.get())
 
 class FilterPopup(simpledialog.Dialog):
 
@@ -73,7 +99,7 @@ class FilterPopup(simpledialog.Dialog):
         super().__init__(parent, title="Filters")
 
     def body(self, master):
-        self.master = master
+        self._master = master
         self.sharpness = self.CreateSlider("Sharpness", 0)
         self.sharpness.set(self.previous_filters.sharpness)
         self.contrast = self.CreateSlider("Contrast", 1)
@@ -85,19 +111,19 @@ class FilterPopup(simpledialog.Dialog):
         return self
 
     def CreateSlider(self, name, column):
-        Label(self.master, text=name).grid(row=0, column=column)
+        Label(self._master, text=name).grid(row=0, column=column)
         val = StringVar(name=name)                    # an MVC-trick an indirect value-holder
         
-        SCALE = Scale( self.master,
+        SCALE = Scale( self._master,
                         variable   = val,    # MVC-Model-Part value holder
-                        from_      = 0,       # MVC-Model-Part value-min-limit
+                        from_      = 1,       # MVC-Model-Part value-min-limit
                         to         =  100.0,       # MVC-Model-Part value-max-limit
                         length     = 200,         # MVC-Visual-Part layout geometry [px]
                         digits     =   5,         # MVC-Visual-Part presentation trick
                         resolution =   0.01     # MVC-Controller-Part stepping
                         )
         SCALE.setvar(name, 1)
-        ENTRY = Entry(self.master, textvariable=val)
+        ENTRY = Entry(self._master, textvariable=val)
         ENTRY.grid(row=3, column=column)
         SCALE.grid(row=2,column=column)
         return val   
@@ -116,7 +142,6 @@ class FilterPopup(simpledialog.Dialog):
             return {"sharpness" : self.sharpness, "contrast" : self.contrast, "color" : self.color, "brightness" : self.brightness}
 
     def GetValues(self):
-        
         return self.Values(self.sharpness.get(),self.contrast.get(),self.color.get(),self.brightness.get())
 
 def aspect_scale(img,bx,by):
@@ -274,6 +299,7 @@ class Mouse():
     def Reset(self) -> None:
         if self.holding != None:
             self.holding.object.show_rotation_degrees = False
+            self.holding.object.PreviewFilters()
             self.holding.object.update_rect()
         self.holding = None
         self.rotating = False
@@ -313,6 +339,7 @@ class Object():
     TYPE_NONE =  ( pygame.image.load(os.path.join(ASSETS_DIRECTORY,"Layout", "Layer", "NoneLayer","layer_0.png")),pygame.image.load(os.path.join(ASSETS_DIRECTORY,"Layout", "Layer", "NoneLayer","layer_1.png")),pygame.image.load(os.path.join(ASSETS_DIRECTORY,"Layout", "Layer", "NoneLayer","layer_2.png")) )
     TYPE_IMAGE = ( pygame.image.load(os.path.join(ASSETS_DIRECTORY,"Layout", "Layer", "ImageLayer","layer_image_0.png")),pygame.image.load(os.path.join(ASSETS_DIRECTORY,"Layout", "Layer", "ImageLayer","layer_image_1.png")),pygame.image.load(os.path.join(ASSETS_DIRECTORY,"Layout", "Layer", "ImageLayer","layer_image_2.png")))
     TYPE_TEXT =  ( pygame.image.load(os.path.join(ASSETS_DIRECTORY,"Layout", "Layer", "TextLayer","layer_text_0.png")), pygame.image.load(os.path.join(ASSETS_DIRECTORY,"Layout", "Layer", "TextLayer","layer_text_1.png")), pygame.image.load(os.path.join(ASSETS_DIRECTORY,"Layout", "Layer", "TextLayer","layer_text_2.png")))
+    TYPE_COLOR = TYPE_NONE
     def __init__(self, x=0, y=0, img=None, width=None, height=None, show_rect=True, collidable=True, resizable=True, keep_aspect_ratio=True, type=-1) -> None:
         self.x : float = x
         self.y : float = y
@@ -328,6 +355,12 @@ class Object():
         self.resizable : bool = resizable
         self.keep_aspect_ratio = keep_aspect_ratio
 
+        if type == Object.TYPE_TEXT:
+            self.text = None
+        elif self.type == Object.TYPE_COLOR:
+            self.color = None
+
+        self.is_constant = False
         self.filters = FilterPopup.Values()
 
         self.id = Object._id_count_
@@ -346,16 +379,20 @@ class Object():
             self.__image__ = self.image.copy()
             self.image = self.image.convert_alpha()
 
+        self.__original_image__ = None
+
         self.rect : pygame.Rect = pygame.Rect(1,1,1,1)
         self.rect_color = Color.WHITE
         self.update_rect()
 
     def PreviewFilters(self) -> None:
-        if self.image != None:
-            tmp = Img("tmp", *self.GetScreenCoordinates(),*self.GetScreenSize(),self.rotation, self.filters.ToDict())
-            _bytes, _size, _mode = tmp.__editorpreview__(content=Image.frombytes('RGBA', self.__original_background__.get_size(), pygame.image.tostring(self.__original_background__, "RGBA"), 'raw'))
-            self.image = pygame.image.fromstring(_bytes, _size, _mode)
-            self.update_rect()
+        if self.image != None and self.__original_image__ != None:
+            filters = self.filters.ToDict()
+            filters["brightness"] = (filters["brightness"] + 99 )/ 100
+            tmp = Img("tmp", *self.GetScreenCoordinates(),*self.GetScreenSize(),self.rotation, filters)
+            _bytes, _size, _mode = tmp.__editorpreview__(content=Image.frombytes('RGBA', self.__original_image__.get_size(), pygame.image.tostring(self.__original_image__, "RGBA"), 'raw'))
+            self.__image__ = pygame.image.fromstring(_bytes, _size, "RGBA")
+            self.apply_rotation()
 
     def SetName(self, name):
         self.id = name
@@ -394,6 +431,12 @@ class Object():
             return True
         return False
 
+    def apply_rotation(self) -> None:
+        if self.__original_image__ != None:
+            self.__image__ = pygame.transform.rotate(self.__image__, self.rotation*-1).convert_alpha()
+            self.image = self.__image__
+            self.update_rect()
+
     def Colliding(self, editor, layer) -> None:
         if self.collidable == False: return
         mouse.SetClicked(layer)
@@ -422,7 +465,12 @@ class Object():
 
     def update_rect(self) -> None:
         self.rect.update(*self.GetScreenCoordinates() , *self.GetScreenSize())
-        if self.image != None:
+
+        if self.type == Object.TYPE_COLOR and self.color != None and self.__image__ == None:
+            self.__original_image__  = pygame.Surface(self.GetScreenSize())
+            pygame.draw.rect(self.__original_image__, self.color, pygame.Rect(0,0,*self.GetScreenSize()))
+            self.__image__ = self.image = self.__original_image__.copy()
+        elif self.image != None:
             if self.keep_aspect_ratio:
                 self.image = aspect_scale(self.__image__.convert_alpha(),*self.GetScreenSize())
             else :
@@ -551,10 +599,20 @@ class AddObjectButton(Button):
         if name == None or len(name.rstrip()) == 0 or not editor.layers.IsUnique(name):
             self.SetState(Button.State.DEFAULT)
             self.update_rect()
+            showerror("Error", "the name must not be empty or already exist!")
             return
-        obj = Object(650,350,width=200,height=200)
+        _type = {"None" : Object.TYPE_NONE, "Image": Object.TYPE_IMAGE, "Text": Object.TYPE_TEXT, "Color" : Object.TYPE_COLOR}[type]
+        obj = Object(650,350,width=200,height=200,keep_aspect_ratio=False, type=_type)
         obj.id = name
-        obj.type = {"None" : Object.TYPE_NONE, "Image": Object.TYPE_IMAGE, "Text": Object.TYPE_TEXT}[type]
+        if  obj.type == Object.TYPE_IMAGE and values.preview != None:
+            obj.__image__ = obj.image = values.preview
+            obj.__original_image__ = values.preview.copy()
+        elif obj.type == Object.TYPE_TEXT:
+            obj.text = values.preview
+        elif obj.type == Object.TYPE_COLOR:
+            obj.color = values.preview
+        obj.update_rect()
+        obj.is_constant = values.is_constant
         editor.layers.append(obj, obj.type)
         self.SetState(Button.State.DEFAULT)
         self.update_rect()
@@ -598,7 +656,7 @@ class MoveUpButton(Button):
     def __init__(self, **kwargs) -> None:
         self.default = pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","UpButton","up_0.png"))
         self.hover = pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","UpButton","up_1.png"))
-        self.clicked = None #pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","ShowNameButton","names_2.png"))
+        self.clicked = None 
         super().__init__(img=self.default,**kwargs)
         self.SetState(Button.State.DEFAULT)
         self.update_rect()
@@ -619,7 +677,7 @@ class MoveDownButton(Button):
     def __init__(self, **kwargs) -> None:
         self.default = pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","DownButton","Down_0.png"))
         self.hover = pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","DownButton","Down_1.png"))
-        self.clicked = None #pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","ShowNameButton","names_2.png"))
+        self.clicked = None 
         super().__init__(img=self.default,**kwargs)
         self.SetState(Button.State.DEFAULT)
         self.update_rect()
@@ -638,7 +696,7 @@ class EditButton(Button):
     def __init__(self, **kwargs) -> None:
         self.default = pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","EditButton","edit_0.png"))
         self.hover = pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","EditButton","edit_1.png"))
-        self.clicked = None #pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","ShowNameButton","names_2.png"))
+        self.clicked = None 
         super().__init__(img=self.default,**kwargs)
         self.SetState(Button.State.DEFAULT)
         self.update_rect()
@@ -652,6 +710,7 @@ class EditButton(Button):
         if name == None or len(name.rstrip()) == 0 or not editor.layers.IsUnique(name):
             self.SetState(Button.State.DEFAULT)
             self.update_rect()
+            showerror("Error", "the name must not be empty or already exist!")
             return
         mouse.selected.id = name
         mouse.selected.object.id = name
@@ -660,7 +719,7 @@ class FilterButton(Button):
     def __init__(self, **kwargs) -> None:
         self.default = pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","FilterButton","filters_0.png"))
         self.hover = pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","FilterButton","filters_1.png"))
-        self.clicked = None #pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","ShowNameButton","names_2.png"))
+        self.clicked = None 
         super().__init__(img=self.default,**kwargs)
         self.SetState(Button.State.DEFAULT)
         self.update_rect()
@@ -670,6 +729,36 @@ class FilterButton(Button):
             vals = FilterPopup(root, previous_filters=mouse.selected.object.filters).GetValues()
             mouse.selected.object.filters = vals
             mouse.selected.object.PreviewFilters()
+
+class SetBackgroundButton(Button):
+    def __init__(self, **kwargs) -> None:
+        self.default = pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","SetBackgroundButton","preview_0.png"))
+        self.hover = pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","SetBackgroundButton","preview_1.png"))
+        self.clicked = None
+        super().__init__(img=self.default,**kwargs)
+        self.SetState(Button.State.DEFAULT)
+        self.update_rect()
+
+    def Colliding(self, editor) -> None:
+        file_dir = askopenfilename()
+        if file_dir != None and file_dir.rstrip() != "" and ( file_dir.endswith(".png") or file_dir.endswith(".jpg") ):
+            editor.SetBackground(pygame.image.load(file_dir))
+            showinfo("Successful", "New background image loaded!")
+        else :
+            showerror("Error", "invalid image file")
+
+class SaveTemplateButton(Button):
+    def __init__(self, **kwargs) -> None:
+        self.default = pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","SaveButton","save_0.png"))
+        self.hover = pygame.image.load(os.path.join(ASSETS_DIRECTORY, "Layout", "Tools","SaveButton","save_1.png"))
+        self.clicked = None
+        super().__init__(img=self.default,**kwargs)
+        self.SetState(Button.State.DEFAULT)
+        self.update_rect()
+
+    def Colliding(self, editor) -> None:
+        editor.ToStack().export_template()
+        showinfo("successful", "saved template. ")
 
 class LayerContainer(UI_Element):
     def __init__(self, color=Color.WHITE, fill_width=1, **kwargs) -> None:
@@ -830,7 +919,9 @@ class Editor():
         self.layers = LayerContainer(x=1255,y=2,width=413*0.83,height=1080*0.83, keep_aspect_ratio=False, img=os.path.join(ASSETS_DIRECTORY,"Layout", "ui_right.png")) # Object(x=20,y=20,width=200,height=200,img="cat.jpg")
         self.tools  = LayerContainer(x=2,y=2,width=80*0.83,height=1080*0.83, keep_aspect_ratio=False, img=os.path.join(ASSETS_DIRECTORY,"Layout", "ui_left.png"))
         self.layers.editor = self
-        self.ui = [AddObjectButton(x=6,y=180, width=70 * 0.84, height=50 * 0.84 ,keep_aspect_ratio=False, show_rect=False),
+        self.ui = [SaveTemplateButton(x=6,y=78, width=70 * 0.84, height=50 * 0.84 ,keep_aspect_ratio=False, show_rect=False),
+                   SetBackgroundButton(x=6,y=123, width=70 * 0.84, height=50 * 0.84 ,keep_aspect_ratio=False, show_rect=False),
+                   AddObjectButton(x=6,y=180, width=70 * 0.84, height=50 * 0.84 ,keep_aspect_ratio=False, show_rect=False),
                    ShowRectButton(x=6,y=240, width=70 * 0.84, height=50 * 0.84 ,keep_aspect_ratio=False, show_rect=False),
                    ShowNameButton(x=6,y=285, width=70 * 0.84, height=50 * 0.84, keep_aspect_ratio=False, show_rect=False),
                    EditButton(x=6,y=345, width=70 * 0.84, height=50 * 0.84 ,keep_aspect_ratio=False, show_rect=False),
@@ -930,6 +1021,14 @@ class Editor():
         for layer in self.layers:
             layer.object.update_rect()
 
+    def SetBackground(self, img) -> None:
+        bg_size =  (WINDOW_SIZE[0] - 100, WINDOW_SIZE[1] - 100)
+        self.__original_background__ = img.convert_alpha()
+        self.background =    Object(x=220,
+                            y=50,
+                            img=aspect_scale(self.__original_background__, *bg_size),
+                            show_rect=False)
+        self.background.update_rect()
 
     def Launch(self) -> Stack:
         while not self.done:
@@ -971,6 +1070,12 @@ class Editor():
         root.quit() 
         return self.ToStack()
 
+    def Close(self) -> None:
+        """WILL **delete** itself and close pygame engine.\n only use if you are certain no more editors will be launched during the runtime"""
+        pygame.quit()
+        del (self)
+
+
     def ToStack(self) -> Stack:
 
         font = ImageFont.truetype(FONT_DIRECTORY, 16)
@@ -988,8 +1093,9 @@ class Editor():
         for layer in self.layers.layers:
             obj = layer.object
             obj_coords = obj.GetScreenCoordinates()
-            coords = (int((obj_coords[0] - self.background.x) * scale_factor[0]),
-                      int((obj_coords[1] - self.background.y) * scale_factor[1])
+            bg_coords = self.background.GetScreenCoordinates()
+            coords = (int((obj_coords[0] - bg_coords[0]) * scale_factor[0]),
+                      int((obj_coords[1] - bg_coords[1]) * scale_factor[1])
                 )
 
             obj_size = obj.GetScreenSize()
@@ -997,10 +1103,40 @@ class Editor():
                     int(obj_size[1] * scale_factor[1])
                     )
 
+
+            constant = None
+
+            if obj.is_constant == True:
+                if obj.type == Object.TYPE_IMAGE:
+                    constant = Image.frombytes('RGBA', obj.__original_image__.get_size(), pygame.image.tostring(obj.__original_image__, "RGBA"), 'raw')
+                elif obj.type == Object.TYPE_TEXT:
+                    constant = obj.text
+                elif obj.type == Object.TYPE_COLOR:
+                    constant = obj.color + (255,)
     
-            if   obj.type == Object.TYPE_IMAGE: scene.add_layer(Img(obj.id, *coords, *size,rotation=obj.rotation, filters=obj.filters.ToDict()))
-            elif obj.type == Object.TYPE_TEXT: scene.add_layer(Text(name=obj.id, font=font, color=(0,0,0),
-                                                                    x=coords[0],y=coords[1],width=size[0],
-                                                                    height=size[1],rotation=obj.rotation
+            if   obj.type == Object.TYPE_IMAGE: scene.add_layer(Img(obj.id,
+                                                                    *coords,
+                                                                    *size,
+                                                                    rotation=obj.rotation,
+                                                                    filters=obj.filters.ToDict(),
+                                                                    constant=constant)
+                                                                    )
+            elif obj.type == Object.TYPE_TEXT: scene.add_layer(Text(name=obj.id,
+                                                                    font=font,
+                                                                    color=(0,0,0),
+                                                                    x=coords[0],
+                                                                    y=coords[1],
+                                                                    width=size[0],
+                                                                    height=size[1],
+                                                                    rotation=obj.rotation,
+                                                                    constant=constant
+                                                                                        ))
+            elif obj.type == Object.TYPE_COLOR: scene.add_layer(ColorLayer(name=obj.id,
+                                                                    x=coords[0],
+                                                                    y=coords[1],
+                                                                    width=size[0],
+                                                                    height=size[1],
+                                                                    rotation=obj.rotation,
+                                                                    constant=constant
                                                                                         ))
         return scene
