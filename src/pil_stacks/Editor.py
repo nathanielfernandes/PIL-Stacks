@@ -3,7 +3,7 @@ import pygame
 from pygame.mouse import get_pos
 from pygame.transform import scale
 import os
-from src.pil_stacks.PIL_Stacks import Stack
+from src.pil_stacks.pil_stacks import Stack
 from src.pil_stacks.Layers import Text, Img
 from src.pil_stacks.Layers import Color as ColorLayer
 from PIL import ImageFont, Image
@@ -72,11 +72,20 @@ class NewLayerPopup(simpledialog.Dialog):
         Label(self._master, text="Type: ").grid(row=0, column=0)
         self.type = StringVar(name="type")
         self.type.set("Image")
+        self.type.trace('w', self.OnTypeChange)
         OptionMenu(master, self.type, "Image", "Text", "Color").grid(
             row=1, column=0
         )  # , "Color") <- add later
         self.name = StringVar(name="name")
         self.name.set("")
+
+        self.font_size_var = StringVar(name="font_size")
+        self.font_size_var.set("10")
+        self.Font_size = Entry(master, textvariable=self.font_size_var)
+        self.font_size_label = Label(master, text="Set Font Size")
+        self.font_size_label.place(x=85, y=135)
+        self.Font_size.grid(row=6, column=0, pady=35)
+        self.Font_size.grid_remove()
 
         Label(
             self._master, text="   Input Layer Name: (no underscores '_')         "
@@ -93,6 +102,12 @@ class NewLayerPopup(simpledialog.Dialog):
 
         return self
 
+    def OnTypeChange(self, *args):
+        if self.type.get() == "Text":
+            self.Font_size.grid()
+        else:
+            self.Font_size.grid_remove()
+            
     def SetPreview(self) -> None:
         type = self.type.get()
         if type == "Image":
@@ -110,11 +125,12 @@ class NewLayerPopup(simpledialog.Dialog):
 
     def GetValues(self):
         class values:
-            def __init__(self, type, name, preview_value, is_constant) -> None:
+            def __init__(self, type, name, preview_value, is_constant, font_size=10) -> None:
                 self.type = type
                 self.name = name
                 self.preview = preview_value
                 self.is_constant = is_constant
+                self.font_size = font_size
 
             def __repr__(self) -> str:
                 return (
@@ -127,7 +143,7 @@ class NewLayerPopup(simpledialog.Dialog):
                 )
 
         return values(
-            self.type.get(), self.name.get(), self.preview, self.is_constant.get()
+            self.type.get(), self.name.get(), self.preview, self.is_constant.get(), int(self.font_size_var.get())
         )
 
 
@@ -480,6 +496,7 @@ class Object:
 
         if type == Object.TYPE_TEXT:
             self.text = None
+            self.font_size = 10
         elif self.type == Object.TYPE_COLOR:
             self.color = None
 
@@ -820,6 +837,7 @@ class AddObjectButton(Button):
             obj.__original_image__ = values.preview.copy()
         elif obj.type == Object.TYPE_TEXT:
             obj.text = values.preview
+            obj.font_size = values.font_size
         elif obj.type == Object.TYPE_COLOR:
             obj.color = values.preview
         obj.update_rect()
@@ -1237,7 +1255,7 @@ class Layer(Button):
 class Editor:
     """An editor object which has a Launch() method to launch the editor window.\n Once Launch() is called a pygame instance will run and lock the rest of the code until the window is closed and a\n Additional options can be enabled by setting the properties to true before calling the Launch() method, such as [show_fps] and [__debug_info__]."""
 
-    def __init__(self, name: str, Background: str) -> None:
+    def __init__(self, name: str, Background: str, Background_as_constant=True) -> None:
         self.name = name
         self.screen = pygame.display.set_mode(WINDOW_SIZE)
         pygame.display.set_icon(EDITOR_ICON)
@@ -1247,6 +1265,8 @@ class Editor:
         self.__debug_info__ = False
         self.done = False
         self.clock = pygame.time.Clock()
+
+        self.Background_as_constant = Background_as_constant
 
         bg_size = (WINDOW_SIZE[0] - 100, WINDOW_SIZE[1] - 100)
         self.__original_background__ = pygame.image.load(Background)
@@ -1533,7 +1553,7 @@ class Editor:
             pygame.image.tostring(self.__original_background__, "RGBA"),
             "raw",
         )
-        scene = Stack(name=self.name, base=base_image, constant_base=True)
+        scene = Stack(name=self.name, base=base_image, constant_base=self.Background_as_constant)
         original_bg = self.__original_background__
         aspect_scaled_bg = self.background.image
         scale_factor = (
@@ -1587,7 +1607,7 @@ class Editor:
                 scene.add_layer(
                     Text(
                         name=obj.id,
-                        font=font,
+                        font=ImageFont.truetype(FONT_DIRECTORY, obj.font_size),
                         color=(0, 0, 0),
                         x=coords[0],
                         y=coords[1],
@@ -1595,6 +1615,7 @@ class Editor:
                         height=size[1],
                         rotation=obj.rotation,
                         constant=constant,
+                        
                     )
                 )
             elif obj.type == Object.TYPE_COLOR:
