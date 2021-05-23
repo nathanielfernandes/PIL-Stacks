@@ -1,6 +1,6 @@
 import json, os, shutil
 from PIL import Image, ImageDraw, ImageFont, ImageSequence, ImageEnhance
-from Layers import Layer, Text, Img
+from src.pil_stacks.Layers import Layer, Text, Img
 from zipfile import ZipFile
 
 

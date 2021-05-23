@@ -1,8 +1,8 @@
 from typing import List, Dict, Union, Tuple
 from PIL import Image, ImageDraw, ImageFont, ImageSequence, ImageEnhance
-from Layers import Layer, Text, Img, Color
+from src.pil_stacks.Layers import Layer, Text, Img, Color
 
-from Template import Template
+from src.pil_stacks.Template import Template
 
 
 class Stack(Template):

@@ -232,7 +232,11 @@ class Text(Layer):
 
         draw = ImageDraw.Draw(txtImage)
         draw.text(
-            xy=(0, 0), text=content, fill=self.color, font=self.font, align=self.align,
+            xy=(0, 0),
+            text=content,
+            fill=self.color,
+            font=self.font,
+            align=self.align,
         )
 
         return txtImage.crop((0, 0, self.width, self.height))
@@ -287,7 +291,14 @@ class Color(Layer):
         constant: Tuple[int, int, int, int] = None,
     ) -> None:
         super().__init__(
-            name, x, y, width, height, rotation, _type="color", constant=constant,
+            name,
+            x,
+            y,
+            width,
+            height,
+            rotation,
+            _type="color",
+            constant=constant,
         )
 
     @staticmethod
@@ -321,4 +332,3 @@ class Color(Layer):
                 width=self.width, height=self.height, color=content
             ),
         )
-
