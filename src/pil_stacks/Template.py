@@ -8,8 +8,9 @@ class Template:
     def import_template(self, template: str) -> None:
         name = os.path.basename(template)
         path = template.replace(name, "")
-
+        flag = False
         if template.endswith(".zip"):
+            flag = True
             path = template.replace(".zip", "") + "/"
             self.path = path
 
@@ -53,7 +54,8 @@ class Template:
 
                 self.add_layer(Img(**layer))
 
-        shutil.rmtree(self.path)
+        if flag:
+            shutil.rmtree(self.path)
 
     def export_template(self) -> None:
         files = []

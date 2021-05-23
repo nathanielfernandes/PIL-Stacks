@@ -3,7 +3,7 @@ import pygame
 from pygame.mouse import get_pos
 from pygame.transform import scale
 import os
-from src.pil_stacks.pil_stacks import Stack
+from src.pil_stacks.PIL_Stacks import Stack
 from src.pil_stacks.Layers import Text, Img
 from src.pil_stacks.Layers import Color as ColorLayer
 from PIL import ImageFont, Image
@@ -72,7 +72,7 @@ class NewLayerPopup(simpledialog.Dialog):
         Label(self._master, text="Type: ").grid(row=0, column=0)
         self.type = StringVar(name="type")
         self.type.set("Image")
-        self.type.trace('w', self.OnTypeChange)
+        self.type.trace("w", self.OnTypeChange)
         OptionMenu(master, self.type, "Image", "Text", "Color").grid(
             row=1, column=0
         )  # , "Color") <- add later
@@ -107,7 +107,7 @@ class NewLayerPopup(simpledialog.Dialog):
             self.Font_size.grid()
         else:
             self.Font_size.grid_remove()
-            
+
     def SetPreview(self) -> None:
         type = self.type.get()
         if type == "Image":
@@ -125,7 +125,9 @@ class NewLayerPopup(simpledialog.Dialog):
 
     def GetValues(self):
         class values:
-            def __init__(self, type, name, preview_value, is_constant, font_size=10) -> None:
+            def __init__(
+                self, type, name, preview_value, is_constant, font_size=10
+            ) -> None:
                 self.type = type
                 self.name = name
                 self.preview = preview_value
@@ -143,7 +145,11 @@ class NewLayerPopup(simpledialog.Dialog):
                 )
 
         return values(
-            self.type.get(), self.name.get(), self.preview, self.is_constant.get(), int(self.font_size_var.get())
+            self.type.get(),
+            self.name.get(),
+            self.preview,
+            self.is_constant.get(),
+            int(self.font_size_var.get()),
         )
 
 
@@ -1553,7 +1559,9 @@ class Editor:
             pygame.image.tostring(self.__original_background__, "RGBA"),
             "raw",
         )
-        scene = Stack(name=self.name, base=base_image, constant_base=self.Background_as_constant)
+        scene = Stack(
+            name=self.name, base=base_image, constant_base=self.Background_as_constant
+        )
         original_bg = self.__original_background__
         aspect_scaled_bg = self.background.image
         scale_factor = (
@@ -1615,7 +1623,6 @@ class Editor:
                         height=size[1],
                         rotation=obj.rotation,
                         constant=constant,
-                        
                     )
                 )
             elif obj.type == Object.TYPE_COLOR:
