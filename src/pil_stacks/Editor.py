@@ -82,7 +82,7 @@ class NewLayerPopup(simpledialog.Dialog):
         self.name.set("")
 
         self.font_size = StringVar(master, name="font_size", value="10")
-        self.font = StringVar(master, name="font", value="Base Font")
+        self.font = StringVar(master, name="font", value="default")
 
         Label(
             self._master, text="   Input Layer Name:"
@@ -106,13 +106,16 @@ class NewLayerPopup(simpledialog.Dialog):
             self.type.set(type_)
             self.name.set(self.existing_obj.id)
             if type_ == "Text":
-                self.font.set(self.existing_obj.font.path)
+                font_ = self.existing_obj.font.path
+                if font_.lower() == "src/pil_stacks/Assets/base_font.ttf": font_ = "default"
+                self.font.set(font_)
                 self.font_size.set(str(self.existing_obj.font.size))
             self.is_constant.set(self.existing_obj.is_constant)
             if type_ == Object.TYPE_IMAGE:
                 self.preview = self.existing_obj.__image__
             elif type_ == Object.TYPE_TEXT:
                 self.preview = self.existing_obj.text
+                print(self.preview)
             elif type_ == Object.TYPE_COLOR:
                 self.preview = self.existing_obj.color
         return self
@@ -136,7 +139,10 @@ class NewLayerPopup(simpledialog.Dialog):
         LayerSettings(self._master)
 
     def SetPreview(self) -> None:
-        type = self.type.get()
+        try:
+            type = self.type.get()
+        except:
+            return
         if type == "Image":
             file_dir: str = askopenfilename()
             if (
@@ -188,7 +194,7 @@ class NewLayerPopup(simpledialog.Dialog):
                 return None
             try:
                 font = self.font.get()
-                if font.lower() == "base font": font = "src/pil_stacks/Assets/base_font.ttf"
+                if font.lower() == "default": font = "src/pil_stacks/Assets/base_font.ttf"
                 font : ImageFont.FreeTypeFont = ImageFont.truetype(font, font_size)
             except:
                 showerror(message=f"Cannot find font {self.font.get()}")
@@ -550,7 +556,7 @@ class Object:
         self.keep_aspect_ratio = keep_aspect_ratio
 
         if type == Object.TYPE_TEXT:
-            self.text = None
+            self.text = ""
             self.font = None
         elif self.type == Object.TYPE_COLOR:
             self.color = None
@@ -694,6 +700,22 @@ class Object:
 
     def update_rect(self) -> None:
         self.rect.update(*self.GetScreenCoordinates(), *self.GetScreenSize())
+        
+        if self.type == Object.TYPE_TEXT and self.text != None and self.font != None:
+            from src.pil_stacks.Layers import Text
+            tmp = Text(
+                "tmp",
+                self.font,
+                (0,0,0),
+                "left",
+                *self.GetScreenCoordinates(),
+                *self.GetScreenSize(),
+                self.rotation,
+            )
+            _bytes, _size, _mode = tmp.__editorpreview__(
+                content=self.text
+            )
+            self.__image__ = self.image = pygame.image.fromstring(_bytes, _size, "RGBA") 
         if (
             self.type == Object.TYPE_COLOR
             and self.color != None
@@ -869,6 +891,7 @@ class AddObjectButton(Button):
 
     def Colliding(self, editor) -> None:
         values = AskForNewLayer()
+        if values == None: return
         name = values.name
         type = values.type
         if values == None or name == None or len(name.rstrip()) == 0 or not editor.layers.IsUnique(name):
@@ -887,7 +910,7 @@ class AddObjectButton(Button):
         }[type]
         width = 200
         height = 200
-        if _type == Object.TYPE_IMAGE:
+        if _type == Object.TYPE_IMAGE and values.preview != None:
             width, height = values.preview.get_size()
         obj = Object(
             650, 350, width=width, height=height, keep_aspect_ratio=False, type=_type
@@ -1050,8 +1073,8 @@ class EditButton(Button):
             return
 
         values = AskForNewLayer(editing_existing=True, existing_obj=mouse.selected.object)
+        if values == None: return
         name = values.name
-        type = values.type
         if values == None or name == None or len(name.rstrip()) == 0 or not editor.layers.IsUnique(name, ignore=[mouse.selected.id]):
             self.SetState(Button.State.DEFAULT)
             self.update_rect()
@@ -1062,7 +1085,7 @@ class EditButton(Button):
             return
         mouse.selected.id = name
         mouse.selected.object.id = name
-        obj = mouse.selected.object
+        obj : Object = mouse.selected.object
         if obj.type == Object.TYPE_IMAGE and values.preview != None:
             obj.__image__ = obj.image = values.preview
             obj.__original_image__ = values.preview.copy()
@@ -1073,7 +1096,9 @@ class EditButton(Button):
             obj.color = values.preview
             obj.__image__ = None
         elif obj.type == Object.TYPE_IMAGE:
-            obj.__image__ = values.preview
+            if values.preview != None: 
+                obj.__image__ = values.preview
+                obj.SetSize(*values.preview.get_size())
         obj.is_constant = values.is_constant
         mouse.selected.update_rect()
         obj.update_rect()
