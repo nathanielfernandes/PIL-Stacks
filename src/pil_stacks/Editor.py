@@ -95,6 +95,7 @@ class NewLayerPopup(simpledialog.Dialog):
         self.is_constant = BooleanVar(name="is_constant")
         
         self.preview_text = StringVar(name="preview_text",value="")
+        self.Color = (0,0,0)
         if self.editing_existing:
             type_ = {
                         Object.TYPE_NONE:  "None",
@@ -114,6 +115,7 @@ class NewLayerPopup(simpledialog.Dialog):
                 self.preview = self.existing_obj.__image__
             elif type_ == "Text":
                 self.preview_text.set(self.existing_obj.text if self.existing_obj.text != None else "")
+                self.Color = self.existing_obj.text_color
             elif type_ == "Color":
                 self.preview = self.existing_obj.color
         return self
@@ -136,6 +138,11 @@ class NewLayerPopup(simpledialog.Dialog):
                         Entry(master=master, textvariable=self.font_size).grid(row=2,column=1)
                         Label(master=master, text="Preview: ").grid(row=3, column=0, padx=4)
                         Entry(master=master, textvariable=self.preview_text).grid(row=3,column=1)
+                        def set_color_callback(): 
+                            color_ = colorchooser.askcolor(color=(self.Color))[0]
+                            if color_ == None: return
+                            self.Color = color_
+                        tkinter.Button(master=master, text="Set Color", command=set_color_callback).grid(column=1)
                     else:
                         tkinter.Button(master=master, text="Set Preview", command=self.SetPreview).grid(column=1)
                 except:
@@ -162,13 +169,14 @@ class NewLayerPopup(simpledialog.Dialog):
     def GetValues(self):
         class values:
             def __init__(
-                self, type, name, preview_value, is_constant, font=None
+                self, type, name, preview_value, is_constant, font=None, Color=(0,0,0)
             ) -> None:
                 self.type = type
                 self.name = name
                 self.preview = preview_value
                 self.is_constant = is_constant
                 self.font = font
+                self.Color = Color
 
             def __repr__(self) -> str:
                 return (
@@ -206,6 +214,7 @@ class NewLayerPopup(simpledialog.Dialog):
             self.preview,
             self.is_constant.get(),
             font,
+            self.Color
         )
 
 
@@ -559,6 +568,7 @@ class Object:
         if type == Object.TYPE_TEXT:
             self.text = ""
             self.font = None
+            self.text_color = (0,0,0)
         elif self.type == Object.TYPE_COLOR:
             self.color = None
 
@@ -707,7 +717,7 @@ class Object:
             tmp = Text(
                 "tmp",
                 self.font,
-                (0,0,0),
+                self.text_color,
                 "left",
                 *self.GetScreenCoordinates(),
                 *self.GetScreenSize(),
@@ -926,6 +936,7 @@ class AddObjectButton(Button):
         elif obj.type == Object.TYPE_TEXT:
             obj.text = values.preview
             obj.font = values.font
+            obj.text_color = values.Color
         elif obj.type == Object.TYPE_COLOR:
             obj.color = values.preview
         obj.update_rect()
@@ -1096,7 +1107,7 @@ class EditButton(Button):
         elif obj.type == Object.TYPE_TEXT:
             obj.text = values.preview
             obj.font = values.font
-            print(obj.text, obj.font)
+            obj.text_color = values.Color
         elif obj.type == Object.TYPE_COLOR:
             obj.color = values.preview
             obj.__image__ = None
@@ -1720,7 +1731,7 @@ class Editor:
                     Text(
                         name=obj.id,
                         font=obj.font,
-                        color=(0, 0, 0),
+                        color=obj.text_color,
                         x=coords[0],
                         y=coords[1],
                         width=size[0],
