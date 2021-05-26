@@ -83,7 +83,6 @@ class NewLayerPopup(simpledialog.Dialog):
 
         self.font_size = StringVar(master, name="font_size", value="10")
         self.font = StringVar(master, name="font", value="default")
-
         Label(
             self._master, text="   Input Layer Name:"
         ).grid(column=0)
@@ -95,7 +94,7 @@ class NewLayerPopup(simpledialog.Dialog):
 
         self.is_constant = BooleanVar(name="is_constant")
         
-
+        self.preview_text = StringVar(name="preview_text",value="")
         if self.editing_existing:
             type_ = {
                         Object.TYPE_NONE:  "None",
@@ -111,12 +110,11 @@ class NewLayerPopup(simpledialog.Dialog):
                 self.font.set(font_)
                 self.font_size.set(str(self.existing_obj.font.size))
             self.is_constant.set(self.existing_obj.is_constant)
-            if type_ == Object.TYPE_IMAGE:
+            if type_ == "Image":
                 self.preview = self.existing_obj.__image__
-            elif type_ == Object.TYPE_TEXT:
-                self.preview = self.existing_obj.text
-                print(self.preview)
-            elif type_ == Object.TYPE_COLOR:
+            elif type_ == "Text":
+                self.preview_text.set(self.existing_obj.text if self.existing_obj.text != None else "")
+            elif type_ == "Color":
                 self.preview = self.existing_obj.color
         return self
 
@@ -129,12 +127,19 @@ class NewLayerPopup(simpledialog.Dialog):
                 Label(master=master, text="constant: ").grid(row=0, column=0, padx=4)
                 Checkbutton(master=master, variable=self.is_constant).grid(row=0,column=1)
 
-                if self.type.get() == "Text":
-                    Label(master=master, text="Font: ").grid(row=1, column=0, padx=4)
-                    Entry(master=master, textvariable=self.font).grid(row=1,column=1)
-                    Label(master=master, text="Font size: ").grid(row=2, column=0, padx=4)
-                    Entry(master=master, textvariable=self.font_size).grid(row=2,column=1)
-                tkinter.Button(master=master, text="Set Preview", command=self.SetPreview).grid(column=1)
+                try:
+                    if self.type.get() == "Text":
+                        if not isinstance(self.preview, str): self.preview=""
+                        Label(master=master, text="Font: ").grid(row=1, column=0, padx=4)
+                        Entry(master=master, textvariable=self.font).grid(row=1,column=1)
+                        Label(master=master, text="Font size: ").grid(row=2, column=0, padx=4)
+                        Entry(master=master, textvariable=self.font_size).grid(row=2,column=1)
+                        Label(master=master, text="Preview: ").grid(row=3, column=0, padx=4)
+                        Entry(master=master, textvariable=self.preview_text).grid(row=3,column=1)
+                    else:
+                        tkinter.Button(master=master, text="Set Preview", command=self.SetPreview).grid(column=1)
+                except:
+                    return
 
         LayerSettings(self._master)
 
@@ -151,11 +156,6 @@ class NewLayerPopup(simpledialog.Dialog):
                 and (file_dir.endswith(".png") or file_dir.endswith(".jpg"))
             ):
                 self.preview = pygame.image.load(file_dir)
-        elif type == "Text":
-            initial = ""
-            if isinstance(self.preview, str):
-                initial = self.preview
-            self.preview = AskForValue("Text preview", "Enter Text: ", initial)
         elif type == "Color":
             self.preview = colorchooser.askcolor(title="Select Color")[0]
 
@@ -199,6 +199,7 @@ class NewLayerPopup(simpledialog.Dialog):
             except:
                 showerror(message=f"Cannot find font {self.font.get()}")
                 return None
+            self.preview = self.preview_text.get()
         return values(
             self.type.get(),
             self.name.get(),
@@ -712,11 +713,14 @@ class Object:
                 *self.GetScreenSize(),
                 self.rotation,
             )
-            _bytes, _size, _mode = tmp.__editorpreview__(
-                content=self.text
-            )
-            self.__image__ = self.image = pygame.image.fromstring(_bytes, _size, "RGBA") 
-        if (
+            try:
+                _bytes, _size, _mode = tmp.__editorpreview__(
+                    content=self.text
+                )
+                self.__image__ = self.image = pygame.image.fromstring(_bytes, _size, "RGBA") 
+            except:
+                pass
+        elif (
             self.type == Object.TYPE_COLOR
             and self.color != None
             and self.__image__ == None
@@ -1092,6 +1096,7 @@ class EditButton(Button):
         elif obj.type == Object.TYPE_TEXT:
             obj.text = values.preview
             obj.font = values.font
+            print(obj.text, obj.font)
         elif obj.type == Object.TYPE_COLOR:
             obj.color = values.preview
             obj.__image__ = None
@@ -1652,11 +1657,6 @@ class Editor:
         del self
 
     def ToStack(self) -> Stack:
-
-        font = ImageFont.truetype(FONT_DIRECTORY, 16)
-        font_L = ImageFont.truetype(FONT_DIRECTORY, 20)
-        font_XL = ImageFont.truetype(FONT_DIRECTORY, 30)
-
         base_image = Image.frombytes(
             "RGBA",
             self.__original_background__.get_size(),
